@@ -1,4 +1,4 @@
-function [allVec,allTs,allTs_marker,allTs_audio] = Closed_Loop_FFT_Binaural()
+function Closed_Loop_FFT_BB()
 % Closed-loop algorithm using fft method to detect peak and deliver binaural beats
 % allVec: Raw EEG (channel*sample)
 % allTs: Timestamp of each sample
@@ -92,10 +92,10 @@ end
 % end
 
 % Try to find a marker stream with a timeout
-disp('Looking for a marker stream (with 5-second timeout)...');
+disp('Looking for a marker stream (with 2-second timeout)...');
 result_marker = {};
 marker_search_start = tic;
-while isempty(result_marker) && toc(marker_search_start) < 5  % 5-second timeout
+while isempty(result_marker) && toc(marker_search_start) < 2  % 5-second timeout
     result_marker = lsl_resolve_byprop(lib, 'type', 'Markers');
     pause(0.1);  % Small pause to prevent CPU hogging
 end
@@ -225,13 +225,13 @@ if exist('outlet_bb_marker', 'var') && marker_available
 end
 disp('Finished receiving');
 
-% Plot results if any audio was delivered
-if ~isempty(allTs_audio)
-    figure;
-    histogram(mod([allTs_audio-allTs(1)]*f_est, 2*pi), 18);
-    title('Distribution of Binaural Beat Delivery Phases');
-    xlabel('Phase (rad)');
-    ylabel('Count');
-    set(gca, 'XLim', [0 2*pi]);
-end
+% % Plot results if any audio was delivered
+% if ~isempty(allTs_audio)
+%     figure;
+%     histogram(mod([allTs_audio-allTs(1)]*f_est, 2*pi), 18);
+%     title('Distribution of Binaural Beat Delivery Phases');
+%     xlabel('Phase (rad)');
+%     ylabel('Count');
+%     set(gca, 'XLim', [0 2*pi]);
+% end
 end
