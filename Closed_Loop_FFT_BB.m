@@ -5,6 +5,7 @@ function [allVec,allTs,allTs_marker,allTs_audio] = Closed_Loop_FFT_Binaural()
 % allTs_marker: Timestamp of event markers
 % allTs_audio: Timestamp of the sample at which binaural beat was delivered
 %% Parameters
+num_channel = 64 % update the number of channel of EEG device 
 elec_interest = [1] % ['Electrode of interest' 'Surrounding electrodes'];
 fnative = 10000; % Native sampling rate
 fs = 1000; % Processing sampling rate
@@ -37,14 +38,6 @@ catch
     audio_available = false;
 end
 
-%% Initialization
-trig_timer = tic; % Used for timing between triggers
-downsample = floor(fnative/fs);
-num_channel = 5
-allVec = nan(num_channel, 100000);
-allTs = nan(1,100000);
-ft_defaults;
-
 %% Close previously opened inlet streams in case it was not closed properly
 try
     inlet.close_stream();
@@ -70,6 +63,7 @@ if ~isempty(result_eeg)
     disp(['  Name: ' streamInfo.name()]);
     disp(['  Type: ' streamInfo.type()]);
     disp(['  Channel count: ' num2str(streamInfo.channel_count())]);
+    num_channel = streamInfo.channel_count(); % update the number of channels
     disp(['  Sampling rate: ' num2str(streamInfo.nominal_srate()) ' Hz']);
 end
 
@@ -123,6 +117,33 @@ disp('Opening an inlet...');
 inlet = lsl_inlet(result_eeg{1});
 % inlet_marker = lsl_inlet(result_marker{1});
 
+% Create LSL outlet for sending binaural beat markers
+disp('Creating LSL outlet for binaural beat markers...');
+try
+    info_bb_marker = lsl_streaminfo(lib, 'BinauralBeatMarkers', 'Markers', 1, 0, 'cf_string', 'BBMarkerID');
+    % Add some metadata
+    chns = info_bb_marker.desc().append_child('channels');
+    ch = chns.append_child('channel');
+    ch.append_child_value('label','BinaularBeatTrigger');
+    ch.append_child_value('type','Marker');
+    ch.append_child_value('unit','na');
+    
+    % Create the outlet
+    outlet_bb_marker = lsl_outlet(info_bb_marker);
+    marker_available = true;
+    disp('Binaural beat marker outlet created successfully');
+catch e
+    warning('Could not create LSL outlet for markers: %s', e.message);
+    marker_available = false;
+end
+
+%% Initialization
+trig_timer = tic; % Used for timing between triggers
+downsample = floor(fnative/fs);
+allVec = nan(num_channel, 100000);
+allTs = nan(1,100000);
+ft_defaults;
+
 %%
 disp('Now receiving data...');
 sample = 0; % Number of samples received
@@ -166,10 +187,24 @@ while 1
                     play(audio_player);
                     trig_timer = tic; % Reset timer after triggering
                     allTs_audio = [allTs_audio ts];
+
+                    % Send LSL marker for binaural beat presentation
+                    if marker_available
+                        % Create a string with detailed information about the stimulus
+                        marker_info = sprintf('BB_phase=%.2f_freq=%.2f_time=%.3f', phase, f_est, ts-allTs(1));
+                        outlet_bb_marker.push_sample({marker_info});
+                        disp(['Marker sent: ' marker_info]);
+                    end
+
+                    % logging with timestamp information
                     disp('Playing binaural beat');
-                    
-                    % Log additional information about the stimulus
-                    fprintf('Beat delivered at phase: %.2f rad, detected frequency: %.2f Hz\n', phase, f_est);
+                    if sample > 1
+                        elapsed_time = ts - allTs(1);
+                        fprintf('Beat delivered at: %.3f s (%.2f rad phase, %.2f Hz frequency)\n', elapsed_time, phase, f_est);
+                    else
+                        fprintf('Beat delivered at phase: %.2f rad, detected frequency: %.2f Hz\n', phase, f_est);
+                    end
+
                 else
                     disp('Would play binaural beat, but audio is not available');
                     trig_timer = tic;
@@ -181,8 +216,13 @@ while 1
     end
 end
 
+% Close LSL outlets and inlets
 inlet.close_stream();
 inlet_marker.close_stream();
+if exist('outlet_bb_marker', 'var') && marker_available
+    outlet_bb_marker.delete();
+    disp('Closed binaural beat marker outlet');
+end
 disp('Finished receiving');
 
 % Plot results if any audio was delivered

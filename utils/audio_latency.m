@@ -36,5 +36,5 @@ for startIdx = 1:256:length(stereo_signal)
     deviceWriter(frameToPlay);
 end
 
-% ouput the buffer latency
+% ouput the buffer latency in seconds
 bufferLatency = fileReader.SamplesPerFrame/deviceWriter.SampleRate 
