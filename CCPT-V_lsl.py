@@ -7,20 +7,26 @@ from pylsl import StreamInfo, StreamOutlet  # Add LSL imports
  
 # Experiment setup
 exp_name = 'CCPT-V'
-exp_info = {'participant': '', 'session': '001'}
+exp_info = {'participant': '', 'session': ''}
 dlg = gui.DlgFromDict(dictionary=exp_info, title=exp_name)
 if not dlg.OK:
     core.quit()  # User pressed cancel
 
 # Parameters setup
 num_trials = 10
+num_practice = 15
  
 # Create data file
 data_dir = os.path.join(os.getcwd(), 'data')
 if not os.path.exists(data_dir):
     os.makedirs(data_dir)
 date_string = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-filename = f"{data_dir}/{exp_info['participant']}_{exp_name}_{date_string}"
+# Create participant directory
+participant_dir = os.path.join(data_dir, f"P{exp_info['participant']}")
+if not os.path.exists(participant_dir):
+    os.makedirs(participant_dir)
+# Create proper filename
+filename = os.path.join(participant_dir, f"P{exp_info['participant']}_S{exp_info['session']}_{exp_name}_{date_string}.csv")
 
 # Create LSL outlet for markers
 info = StreamInfo(
@@ -58,8 +64,7 @@ color_rgb = {
 # Function to create shapes
 def create_stimulus(shape_name, color_name):
     color_val = color_rgb[color_name]
-    width = random.uniform(1.8, 1.9)
-    height = random.uniform(1.4, 1.8)
+    width = random.uniform(1.8, 2.2)
     
     if shape_name == 'square':
         return visual.Rect(win, width=width, height=width, fillColor=color_val, lineColor=None)
@@ -72,17 +77,16 @@ def create_stimulus(shape_name, color_name):
         return visual.Polygon(win, edges=5, radius=width/2, fillColor=color_val, lineColor=None)
     elif shape_name == 'diamond':
         # Alternative approach using a rotated square
-        size = min(width, height)  # Use the smaller dimension for consistency
-        diamond = visual.Rect(win, width=size, height=size, fillColor=color_val, lineColor=None)
+        diamond = visual.Rect(win, width=width, height=width, fillColor=color_val, lineColor=None)
         diamond.ori = 45  # Rotate 45 degrees
         return diamond
     elif shape_name == 'rectangle':
-        return visual.Rect(win, width=width, height=height, fillColor=color_val, lineColor=None)
+        return visual.Rect(win, width=width*1.3, height=width, fillColor=color_val, lineColor=None)
     elif shape_name == 'hexagon':
         return visual.Polygon(win, edges=6, radius=width/2, fillColor=color_val, lineColor=None)
     elif shape_name == 'pentagon':
         return visual.Polygon(win, edges=5, radius=width/2, fillColor=color_val, lineColor=None)
- 
+  
 # Instructions
 instructions = visual.TextStim(
     win,
@@ -180,7 +184,7 @@ outlet.push_sample(["practice_instructions_displayed"])
 event.waitKeys()
 outlet.push_sample(["practice_start"])
 
-practice_trials = create_trial_sequence(15, is_practice=True)
+practice_trials = create_trial_sequence(num_practice, is_practice=True)
 practice_trial_num = 0
 
 for trial in practice_trials:
@@ -229,7 +233,7 @@ outlet.push_sample(["practice_complete"])
 main_message = visual.TextStim(
     win,
     text="Practice complete.\n\nThe main experiment will now begin.\n\n"
-         "Remember: Press SPACE only for RED SQUARES.\n\n"
+         "Remember: Press SPACE BAR only for RED SQUARES.\n\n"
          "Press any key to start.",
     height=0.7
 )
