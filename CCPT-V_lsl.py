@@ -15,6 +15,7 @@ if not dlg.OK:
 # Parameters setup
 num_trials = 10
 num_practice = 15
+sampling_rate = 10000  # sampling rate of
  
 # Create data file
 data_dir = os.path.join(os.getcwd(), 'data')
@@ -30,12 +31,12 @@ filename = os.path.join(participant_dir, f"P{exp_info['participant']}_S{exp_info
 
 # Create LSL outlet for markers
 info = StreamInfo(
-    name='CCPT-V_Markers',
+    name='CCPT-V',
     type='Markers',
     channel_count=1,
-    nominal_srate=0,  # Irregular sampling rate
-    channel_format='string',
-    source_id=f"CCPT_Visual_{exp_info['participant']}"
+    nominal_srate=sampling_rate, 
+    channel_format='string', 
+    source_id=f"CCPT-V_{exp_info['participant']}_{exp_info['session']}"
 )
 outlet = StreamOutlet(info)
 print("LSL outlet created for sending event markers")
@@ -112,9 +113,9 @@ example_square = visual.Rect(
 instructions.draw()
 example_square.draw()
 win.flip()
-outlet.push_sample(["instructions_with_example_displayed"])  # Mark instructions onset
+outlet.push_sample(["i"])  # Mark instructions onset
 event.waitKeys()
-outlet.push_sample(["instructions_acknowledged"])  # Mark instructions acknowledged
+outlet.push_sample(["i_ack"])  # Mark instructions acknowledged
  
 # Create trial sequence
 def create_trial_sequence(num_trials, is_practice=False):
@@ -150,7 +151,7 @@ def create_trial_sequence(num_trials, is_practice=False):
     random.shuffle(trials)
     
     # Assign ISIs
-    isis = [0.400, 0.600, 0.800, 1]
+    isis = [1, 1.4, 1.6, 2.2]
     isi_count = len(trials) // len(isis)
     isi_list = []
     for isi in isis:
@@ -180,9 +181,9 @@ exp_data = []
 practice_message = visual.TextStim(win, text="Practice trials will now begin.\n\nPress any key to continue.")
 practice_message.draw()
 win.flip()
-outlet.push_sample(["practice_instructions_displayed"])
+# outlet.push_sample(["p"])
 event.waitKeys()
-outlet.push_sample(["practice_start"])
+outlet.push_sample(["p"])
 
 practice_trials = create_trial_sequence(num_practice, is_practice=True)
 practice_trial_num = 0
@@ -192,7 +193,7 @@ for trial in practice_trials:
     
     # Inter-stimulus interval
     win.flip()  # Show blank screen
-    outlet.push_sample([f"practice_isi_{practice_trial_num}"])
+    # outlet.push_sample([f"practice_isi_{practice_trial_num}"])
     core.wait(trial['isi'])
     
     # Show stimulus
@@ -202,7 +203,7 @@ for trial in practice_trials:
     
     # Send stimulus marker
     is_target_str = "target" if trial['is_target'] else "non_target"
-    outlet.push_sample([f"practice_stim_{practice_trial_num}_{trial['shape']}_{trial['color']}_{is_target_str}"])
+    outlet.push_sample([f"p{practice_trial_num}_{trial['shape']}_{trial['color']}_{is_target_str}"])
     
     # Record response
     response = None
@@ -213,21 +214,21 @@ for trial in practice_trials:
     
     # Mark stimulus offset
     win.flip()  # Clear screen
-    outlet.push_sample([f"practice_stim_offset_{practice_trial_num}"])
+    outlet.push_sample([f"p_off_{practice_trial_num}"])
     
     if keys:
         if 'escape' in [k[0] for k in keys]:
-            outlet.push_sample(["practice_aborted"])
+            outlet.push_sample(["p_esc"])
             win.close()
             core.quit()
         
         response = 'space' in [k[0] for k in keys]
         rt = keys[0][1]
         
-        if response:
-            outlet.push_sample([f"practice_response_{practice_trial_num}_{rt}"])
+        # if response:
+        #     outlet.push_sample([f"practice_response_{practice_trial_num}_{rt}"])
  
-outlet.push_sample(["practice_complete"])
+outlet.push_sample(["p_end"])
 
 # Transition from practice to main trials
 main_message = visual.TextStim(
@@ -239,9 +240,9 @@ main_message = visual.TextStim(
 )
 main_message.draw()
 win.flip()
-outlet.push_sample(["main_instructions_displayed"])
+outlet.push_sample(["t_instruct"])
 event.waitKeys()
-outlet.push_sample(["main_experiment_start"])
+outlet.push_sample(["t_start"])
  
 # Data file setup
 data_file = open(f"{filename}.csv", 'w')
@@ -254,9 +255,9 @@ trial_num = 0
 for trial in trials:
     trial_num += 1
     
-    # Show fixation
+    # ISI
     win.flip()
-    outlet.push_sample([f"isi_{trial_num}"])
+    # outlet.push_sample([f"isi_{trial_num}"])
     core.wait(trial['isi'])
     
     # Show stimulus
@@ -266,7 +267,7 @@ for trial in trials:
     
     # Send stimulus marker with detailed information
     is_target_str = "target" if trial['is_target'] else "non_target"
-    outlet.push_sample([f"stim_{trial_num}_{trial['shape']}_{trial['color']}_{is_target_str}"])
+    outlet.push_sample([f"t{trial_num}_{trial['shape']}_{trial['color']}_{is_target_str}"])
     
     # Record response
     response = False
@@ -278,7 +279,7 @@ for trial in trials:
     # Present stimulus for 200ms
     core.wait(0.200)
     win.flip()  # Clear screen
-    outlet.push_sample([f"stim_offset_{trial_num}"])
+    outlet.push_sample([f"t_off_{trial_num}"])
     
     # Check for responses (allowing for response after stimulus disappears)
     timeout = 0.5  # Allow responses for up to 500ms after stimulus offset
@@ -287,7 +288,7 @@ for trial in trials:
         if these_keys:
             keys.extend(these_keys)
             if 'escape' in [k[0] for k in keys]:
-                outlet.push_sample(["experiment_aborted"])
+                outlet.push_sample(["t_esc"])
                 data_file.close()
                 win.close()
                 core.quit()
@@ -300,7 +301,7 @@ for trial in trials:
             for k in keys:
                 if k[0] == 'space':
                     rt = k[1]
-                    outlet.push_sample([f"response_{trial_num}_{rt}"])
+                    outlet.push_sample([f"res_{trial_num}_{rt}"])
                     break
     
     # Determine if response was correct
@@ -311,34 +312,23 @@ for trial in trials:
     
     # Check for quit
     if event.getKeys(['escape']):
-        outlet.push_sample(["experiment_aborted"])
+        outlet.push_sample(["t_esc"])
         break
  
 # Mark experiment completion
-outlet.push_sample(["experiment_complete"])
+outlet.push_sample(["t_end"])
 
+final_message = visual.TextStim(
+    win,
+    text="Experiment complete!\n\nThank you for participating.",
+    height=0.7
+)
+final_message.draw()
+win.flip()
+core.wait(3)
 # Close everything
 data_file.close()
 win.close()
- 
-# Final message
-final_win = visual.Window(
-    size=(1920, 1080),
-    fullscr=False,
-    monitor="testMonitor",
-    units="norm",
-    color=[0, 0, 0]
-)
-final_message = visual.TextStim(
-    final_win,
-    text="Experiment complete!\n\nThank you for participating.",
-    height=0.1
-)
-final_message.draw()
-final_win.flip()
-outlet.push_sample(["final_message_displayed"])
-core.wait(3)
-final_win.close()
 
 # Clean up LSL outlet before quitting
 del outlet
