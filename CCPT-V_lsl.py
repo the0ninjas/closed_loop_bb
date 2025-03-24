@@ -13,8 +13,8 @@ if not dlg.OK:
     core.quit()  # User pressed cancel
 
 # Parameters setup
-num_trials = 10
-num_practice = 15
+num_trials = 180
+num_practice = 10
 sampling_rate = 10000  # sampling rate of
  
 # Create data file
@@ -267,7 +267,8 @@ for trial in trials:
     
     # Send stimulus marker with detailed information
     is_target_str = "target" if trial['is_target'] else "non_target"
-    outlet.push_sample([f"t{trial_num}_{trial['shape']}_{trial['color']}_{is_target_str}"])
+    # outlet.push_sample([f"t{trial_num}_{trial['shape']}_{trial['color']}_{is_target_str}"])
+    outlet.push_sample([f"t{trial_num}_{is_target_str}"])
     
     # Record response
     response = False
