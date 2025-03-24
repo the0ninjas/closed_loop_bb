@@ -6,9 +6,9 @@ function Closed_Loop_FFT_BB()
 % allTs_audio: Timestamp of the sample at which binaural beat was delivered
 %% Parameters
 num_channel = 64 % update the number of channel of EEG device 
-elec_interest = [1] % ['Electrode of interest' 'Surrounding electrodes'];
-fnative = 10000; % Native sampling rate
-fs = 1000; % Processing sampling rate
+elec_interest = [12, 13, 17, 26] % ['Electrode of interest' 'Surrounding electrodes'];
+fnative = 500; % Native sampling rate
+fs = 250; % Processing sampling rate
 TrigInt = 3; % Minimum interval between audio bursts (changed from 2 to 3)
 win_length = fs/2; % Window length for online processing
 targetFreq = [8 13]; % Band of interest in Hz
@@ -147,72 +147,90 @@ ft_defaults;
 %%
 disp('Now receiving data...');
 sample = 0; % Number of samples received
-downsample_idx = 10; % Index used for downsampling
+downsample_idx = downsample; % Set to match the expected value
 allTs_audio = [];
 allTs_marker = [];
 
 while 1
-    [vec,ts] = inlet.pull_sample(1);
-    [~,ts_marker] = inlet_marker.pull_chunk();
-    allTs_marker = [allTs_marker ts_marker];
-    if isempty(vec)
-        break; % End cycle if didn't receive data within certain time
-    end
-    if downsample_idx == downsample
-        sample = sample+1;
-        allVec(:,sample) = vec';
-        allTs(:,sample) = ts;
-        downsample_idx = 1;
-        if sample >= win_length && toc(trig_timer) > TrigInt % Enough samples & enough time between triggers
-            if length(elec_interest) == 1
-                chunk = allVec(elec_interest,sample-win_length+1:sample)-allVec(num_channel,sample-win_length+1:sample);
-            else
-                ref = mean(allVec(elec_interest(2:end),sample-win_length+1:sample));
-                chunk = allVec(elec_interest(1),sample-win_length+1:sample)-ref;
-            end
-            chunk_filt = ft_preproc_bandpassfilter(chunk, fs, targetFreq, [], 'fir','twopass');
+    try
+        % Use shorter timeout for more responsive behavior
+        [vec, ts] = inlet.pull_sample(0.1);
+        
+        % Try to get any available markers
+        try
+            [~, ts_marker] = inlet_marker.pull_chunk();
+            allTs_marker = [allTs_marker ts_marker];
+        catch
+            % Ignore marker errors
+        end
+        
+        if isempty(vec)
+            fprintf('.');  % Show waiting progress
+            pause(0.05);   % Brief pause before retrying
+            continue;      % Skip to next iteration
+        end
+        
+        % Continue with existing processing code
+        if downsample_idx == downsample
+            sample = sample+1;
+            allVec(:,sample) = vec';
+            allTs(:,sample) = ts;
+            downsample_idx = 1;
             
-            Xf = fft(chunk_filt,4096);
-            [~,idx] = max(abs(Xf));
-            f_est = (idx-1)*fs/length(Xf); % Estimated frequency
-            phase_est = angle(Xf(idx)); % Estimated phase at the beginning of window
-            phase = mod(2*pi*f_est*(win_length-1)/fs+phase_est,2*pi); % Current sample phase
-            phase = wrapToPi(phase);
-            
-            if abs((desired_phase-phase)*fs/f_est/2/pi-technical_delay) <= delay_tolerance
-                % Play binaural beats instead of sending TMS trigger
-                if audio_available
-                    % Create new audioplayer object to ensure fresh playback
-                    audio_player = audioplayer(stereo_signal, audio_fs);
-                    play(audio_player);
-                    trig_timer = tic; % Reset timer after triggering
-                    allTs_audio = [allTs_audio ts];
-
-                    % Send LSL marker for binaural beat presentation
-                    if marker_available
-                        % Create a string with detailed information about the stimulus
-                        marker_info = sprintf('BB_phase=%.2f_freq=%.2f_time=%.3f', phase, f_est, ts-allTs(1));
-                        outlet_bb_marker.push_sample({marker_info});
-                        disp(['Marker sent: ' marker_info]);
-                    end
-
-                    % logging with timestamp information
-                    disp('Playing binaural beat');
-                    if sample > 1
-                        elapsed_time = ts - allTs(1);
-                        fprintf('Beat delivered at: %.3f s (%.2f rad phase, %.2f Hz frequency)\n', elapsed_time, phase, f_est);
-                    else
-                        fprintf('Beat delivered at phase: %.2f rad, detected frequency: %.2f Hz\n', phase, f_est);
-                    end
-
+            if sample >= win_length && toc(trig_timer) > TrigInt % Enough samples & enough time between triggers
+                if length(elec_interest) == 1
+                    chunk = allVec(elec_interest,sample-win_length+1:sample)-allVec(num_channel,sample-win_length+1:sample);
                 else
-                    disp('Would play binaural beat, but audio is not available');
-                    trig_timer = tic;
+                    ref = mean(allVec(elec_interest(2:end),sample-win_length+1:sample));
+                    chunk = allVec(elec_interest(1),sample-win_length+1:sample)-ref;
+                end
+                chunk_filt = ft_preproc_bandpassfilter(chunk, fs, targetFreq, [], 'fir','twopass');
+                
+                Xf = fft(chunk_filt,4096);
+                [~,idx] = max(abs(Xf));
+                f_est = (idx-1)*fs/length(Xf); % Estimated frequency
+                phase_est = angle(Xf(idx)); % Estimated phase at the beginning of window
+                phase = mod(2*pi*f_est*(win_length-1)/fs+phase_est,2*pi); % Current sample phase
+                phase = wrapToPi(phase);
+                
+                if abs((desired_phase-phase)*fs/f_est/2/pi-technical_delay) <= delay_tolerance
+                    % Play binaural beats instead of sending TMS trigger
+                    if audio_available
+                        % Create new audioplayer object to ensure fresh playback
+                        audio_player = audioplayer(stereo_signal, audio_fs);
+                        play(audio_player);
+                        trig_timer = tic; % Reset timer after triggering
+                        allTs_audio = [allTs_audio ts];
+
+                        % Send LSL marker for binaural beat presentation
+                        if marker_available
+                            % Create a string with detailed information about the stimulus
+                            marker_info = sprintf('BB_phase=%.2f_freq=%.2f_time=%.3f', phase, f_est, ts-allTs(1));
+                            outlet_bb_marker.push_sample({marker_info});
+                            disp(['Marker sent: ' marker_info]);
+                        end
+
+                        % logging with timestamp information
+                        disp('Playing binaural beat');
+                        if sample > 1
+                            elapsed_time = ts - allTs(1);
+                            fprintf('Beat delivered at: %.3f s (%.2f rad phase, %.2f Hz frequency)\n', elapsed_time, phase, f_est);
+                        else
+                            fprintf('Beat delivered at phase: %.2f rad, detected frequency: %.2f Hz\n', phase, f_est);
+                        end
+
+                    else
+                        disp('Would play binaural beat, but audio is not available');
+                        trig_timer = tic;
+                    end
                 end
             end
+        else
+            downsample_idx = downsample_idx + 1;
         end
-    else
-        downsample_idx = downsample_idx + 1;
+    catch ME
+        warning('Error in data processing: %s', ME.message);
+        pause(0.5); % Brief pause before retrying
     end
 end
 
