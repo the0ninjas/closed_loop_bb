@@ -17,8 +17,8 @@ num_trials = 180
 num_practice = 10
 sampling_rate = 10000  # sampling rate of
  
-# Create data file
-data_dir = os.path.join(os.getcwd(), 'data')
+ # Save results to csv file
+data_dir = os.path.join('C:\\Users\\Pc\\Documents\\BCI\\trial')
 if not os.path.exists(data_dir):
     os.makedirs(data_dir)
 date_string = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -27,7 +27,7 @@ participant_dir = os.path.join(data_dir, f"P{exp_info['participant']}")
 if not os.path.exists(participant_dir):
     os.makedirs(participant_dir)
 # Create proper filename
-filename = os.path.join(participant_dir, f"P{exp_info['participant']}_S{exp_info['session']}_{exp_name}_{date_string}.csv")
+filename = os.path.join(participant_dir, f"P{exp_info['participant']}_S{exp_info['session']}_{exp_name}_{date_string}")
 
 # Create LSL outlet for markers
 info = StreamInfo(
