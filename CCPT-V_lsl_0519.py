@@ -1,4 +1,5 @@
 from psychopy import visual, core, event, data, gui
+from psychopy.hardware import keyboard
 import numpy as np
 import random
 import os
@@ -35,11 +36,14 @@ info = StreamInfo(
     type='Markers',
     channel_count=1,
     nominal_srate=sampling_rate, 
-    channel_format='string', o
+    channel_format='string',
     source_id=f"CCPT-V_{exp_info['participant']}_{exp_info['session']}"
 )
 outlet = StreamOutlet(info)
 print("LSL outlet created for sending event markers")
+
+# Create keyboard object for precise timing
+kb = keyboard.Keyboard()
  
 # Setup window
 win = visual.Window(
@@ -115,7 +119,7 @@ instructions.draw()
 example_square.draw()
 win.flip()
 outlet.push_sample(["i"])  # Mark instructions onset
-event.waitKeys()
+kb.waitKeys()  # Use keyboard object instead of event.waitKeys
 # outlet.push_sample(["i_ack"])  # Mark instructions acknowledged
  
 # Create trial sequence
@@ -183,7 +187,7 @@ practice_message = visual.TextStim(win, text="Practice trials will now begin.\n\
 practice_message.draw()
 win.flip()
 outlet.push_sample(["p_start"])
-event.waitKeys()
+kb.waitKeys()
 # outlet.push_sample(["p"])
 
 practice_trials = create_trial_sequence(num_practice, is_practice=True)
@@ -197,16 +201,21 @@ for trial in practice_trials:
     # outlet.push_sample([f"practice_isi_{practice_trial_num}"])
     core.wait(trial['isi'])
     
+    # Clear keyboard buffer and reset clock before stimulus presentation
+    kb.clearEvents()
+    
     # Show stimulus
     stim = create_stimulus(trial['shape'], trial['color'])
     stim.draw()
     win.flip()
+    
+    # Reset keyboard clock immediately after stimulus onset
+    kb.clock.reset()
 
-    # Record response
-    trial_clock = core.Clock()    
+    # Record response for 200ms
     response = False
     rt = None
-    keys = event.waitKeys(maxWait=0.200, timeStamped=trial_clock, keyList=['space', 'escape'])
+    keys = kb.getKeys(maxWait=0.200, keyList=['space', 'escape'])
         
     # Send stimulus marker
     is_target_str = "target" if trial['is_target'] else "non_target"
@@ -217,13 +226,14 @@ for trial in practice_trials:
     # outlet.push_sample([f"p_off_{practice_trial_num}"])
     
     if keys:
-        if 'escape' in [k[0] for k in keys]:
+        if keys[0].name == 'escape':
             # outlet.push_sample(["p_esc"])
             win.close()
             core.quit()
         
-        response = 'space' in [k[0] for k in keys]
-        rt = keys[0][1]
+        if keys[0].name == 'space':
+            response = True
+            rt = keys[0].rt
         
         # if response:
         #     outlet.push_sample([f"practice_response_{practice_trial_num}_{rt}"])
@@ -241,7 +251,7 @@ main_message = visual.TextStim(
 main_message.draw()
 win.flip()
 outlet.push_sample(["t_instruct"])
-event.waitKeys()
+kb.waitKeys()
 outlet.push_sample(["t_start"])
  
 # Data file setup
@@ -260,49 +270,52 @@ for trial in trials:
     # outlet.push_sample([f"isi_{trial_num}"])
     core.wait(trial['isi'])
     
+    # Clear keyboard buffer before stimulus presentation
+    kb.clearEvents()
+    
     # Show stimulus
     stim = create_stimulus(trial['shape'], trial['color'])
     stim.draw()
     win.flip()
-
-    # Record response
-    trial_clock = core.Clock()    
-    response = False
-    rt = None
-    keys = event.getKeys(timeStamped=trial_clock)
+    
+    # Reset keyboard clock immediately after stimulus onset
+    kb.clock.reset()
 
     # Send stimulus marker with detailed information
     is_target_str = "100" if trial['is_target'] else "200"
     # outlet.push_sample([f"t{trial_num}_{trial['shape']}_{trial['color']}_{is_target_str}"])
     outlet.push_sample([f"t{is_target_str}"])
     
-    # Present stimulus for 200ms
-    core.wait(0.200)
-    win.flip()  # Clear screen
+    # Record response
+    response = False
+    rt = None
+    
+    # Present stimulus for 200ms and collect keys during this time
+    keys = kb.getKeys(maxWait=0.200, keyList=['space', 'escape'])
+    
+    # Clear screen after stimulus presentation
+    win.flip()
     outlet.push_sample([f"t_off_{trial_num}"])
     
-    # Check for responses (allowing for response after stimulus disappears)
-    timeout = 0.5  # Allow responses for up to 500ms after stimulus offset
-    while trial_clock.getTime() < timeout:
-        these_keys = event.getKeys(timeStamped=trial_clock)
-        if these_keys:
-            keys.extend(these_keys)
-            if 'escape' in [k[0] for k in keys]:
+    # Continue checking for responses for additional 500ms after stimulus disappears
+    if not keys:  # If no response during stimulus presentation
+        additional_keys = kb.getKeys(maxWait=0.5, keyList=['space', 'escape'])
+        if additional_keys:
+            keys.extend(additional_keys)
+    
+    # Process key responses
+    if keys:
+        for key in keys:
+            if key.name == 'escape':
                 outlet.push_sample(["t_esc"])
                 data_file.close()
                 win.close()
                 core.quit()
-                
-    # Process key responses
-    if keys:
-        if 'space' in [k[0] for k in keys]:
-            response = True
-            # Find the first space key press
-            for k in keys:
-                if k[0] == 'space':
-                    rt = k[1]
-                    outlet.push_sample([f"rt"])
-                    break
+            elif key.name == 'space' and not response:  # Take first space press only
+                response = True
+                rt = key.rt
+                outlet.push_sample([f"rt"])
+                break
     
     # Determine if response was correct
     correct = (trial['is_target'] and response) or (not trial['is_target'] and not response)
@@ -310,8 +323,9 @@ for trial in trials:
     # Save data
     data_file.write(f"{trial_num},{trial['shape']},{trial['color']},{trial['is_target']},{trial['isi']},{response},{rt},{correct}\n")
     
-    # Check for quit
-    if event.getKeys(['escape']):
+    # Check for quit (additional escape check)
+    quit_keys = kb.getKeys(keyList=['escape'])
+    if quit_keys:
         outlet.push_sample(["t_esc"])
         break
  
