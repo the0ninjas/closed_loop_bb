@@ -35,7 +35,7 @@ info = StreamInfo(
     type='Markers',
     channel_count=1,
     nominal_srate=sampling_rate, 
-    channel_format='string', 
+    channel_format='string', o
     source_id=f"CCPT-V_{exp_info['participant']}_{exp_info['session']}"
 )
 outlet = StreamOutlet(info)
@@ -201,17 +201,16 @@ for trial in practice_trials:
     stim = create_stimulus(trial['shape'], trial['color'])
     stim.draw()
     win.flip()
-    
+
+    # Record response
+    trial_clock = core.Clock()    
+    response = False
+    rt = None
+    keys = event.waitKeys(maxWait=0.200, timeStamped=trial_clock, keyList=['space', 'escape'])
+        
     # Send stimulus marker
     is_target_str = "target" if trial['is_target'] else "non_target"
     # outlet.push_sample([f"p{practice_trial_num}_{trial['shape']}_{trial['color']}_{is_target_str}"])
-    
-    # Record response
-    response = None
-    rt = None
-    
-    trial_clock = core.Clock()
-    keys = event.waitKeys(maxWait=0.200, timeStamped=trial_clock, keyList=['space', 'escape'])
     
     # Mark stimulus offset
     win.flip()  # Clear screen
@@ -265,18 +264,17 @@ for trial in trials:
     stim = create_stimulus(trial['shape'], trial['color'])
     stim.draw()
     win.flip()
-    
+
+    # Record response
+    trial_clock = core.Clock()    
+    response = False
+    rt = None
+    keys = event.getKeys(timeStamped=trial_clock)
+
     # Send stimulus marker with detailed information
     is_target_str = "100" if trial['is_target'] else "200"
     # outlet.push_sample([f"t{trial_num}_{trial['shape']}_{trial['color']}_{is_target_str}"])
     outlet.push_sample([f"t{is_target_str}"])
-    
-    # Record response
-    response = False
-    rt = None
-    
-    trial_clock = core.Clock()
-    keys = event.getKeys(timeStamped=trial_clock)
     
     # Present stimulus for 200ms
     core.wait(0.200)
